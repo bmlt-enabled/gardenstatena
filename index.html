@@ -88,6 +88,43 @@
             transform: translateY(0);
         }
 
+        .filter-toggles {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .toggle-btn {
+            padding: 0.625rem 1.25rem;
+            background: #f7fafc;
+            color: #4a5568;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .toggle-btn:hover {
+            background: #edf2f7;
+            border-color: #cbd5e0;
+        }
+
+        .toggle-btn.active {
+            background: #3182ce;
+            color: white;
+            border-color: #3182ce;
+            box-shadow: 0 2px 4px rgba(49, 130, 206, 0.2);
+        }
+
+        .toggle-btn.active:hover {
+            background: #2b6cb0;
+            border-color: #2b6cb0;
+        }
+
         #bmlt-tabs {
             max-width: 1200px;
             margin: 0 auto;
@@ -156,6 +193,9 @@
         <a href="/?day=5">Thursday</a>
         <a href="/?day=6">Friday</a>
         <a href="/?day=7">Saturday</a>
+    </div>
+    <div class="filter-toggles">
+        <button id="upcoming-toggle" class="toggle-btn">Upcoming Only</button>
     </div>
 </div>
 <div class="lds-css ng-scope"><div class="lds-ellipsis"><div><div></div></div><div><div></div></div><div><div></div></div><div><div></div></div><div><div></div></div></div></div>
@@ -238,5 +278,124 @@
     jQuery("#paper_schedule").click(function() {
         window.open('https://demo.bmlt.app/?current-meeting-list=5&querystring_custom_1=New%20Jersey&custom_query=%26meeting_key%3Dlocation_province%26meeting_key_value%3DNJ', '_blank');
     });
+
+    // Upcoming meetings filter
+    var upcomingFilterActive = false;
+    var upcomingToggle = document.getElementById('upcoming-toggle');
+
+    function getTodayDayNumber() {
+        // BMLT uses 1=Sunday, 2=Monday, etc.
+        var jsDay = new Date().getDay(); // 0=Sunday, 1=Monday, etc.
+        return jsDay + 1; // Convert to BMLT format
+    }
+
+    function getCurrentMinutes() {
+        var now = new Date();
+        return now.getHours() * 60 + now.getMinutes();
+    }
+
+    function parseTimeToMinutes(timeStr) {
+        // Parse time strings like "7:00 PM", "10:30 AM", "19:00"
+        if (!timeStr) return null;
+
+        timeStr = timeStr.trim().toUpperCase();
+        var hours, minutes;
+
+        // Check for AM/PM format
+        var isPM = timeStr.includes('PM');
+        var isAM = timeStr.includes('AM');
+
+        // Remove AM/PM
+        timeStr = timeStr.replace(/\s*(AM|PM)/i, '');
+
+        var parts = timeStr.split(':');
+        hours = parseInt(parts[0], 10);
+        minutes = parseInt(parts[1], 10) || 0;
+
+        if (isPM && hours !== 12) {
+            hours += 12;
+        } else if (isAM && hours === 12) {
+            hours = 0;
+        }
+
+        return hours * 60 + minutes;
+    }
+
+    function filterUpcomingMeetings() {
+        var selectedDay = getUrlParameter('day');
+        var todayDayNumber = getTodayDayNumber();
+        var currentMinutes = getCurrentMinutes();
+
+        // Get all meeting rows
+        var meetingRows = document.querySelectorAll('.bmlt-data-row');
+
+        meetingRows.forEach(function(row) {
+            if (!upcomingFilterActive) {
+                row.style.display = '';
+                return;
+            }
+
+            // Get the day tab this meeting belongs to
+            var parentTable = row.closest('.bmlt-table');
+            var tabPanel = parentTable ? parentTable.closest('[id^="bmlt-table-"]') : null;
+            var meetingDayNumber = null;
+
+            if (tabPanel) {
+                // Extract day number from tab panel id (e.g., "bmlt-table-1" for Sunday)
+                var match = tabPanel.id.match(/bmlt-table-(\d+)/);
+                if (match) {
+                    meetingDayNumber = parseInt(match[1], 10);
+                }
+            }
+
+            // If viewing a specific day via URL param, use that
+            if (selectedDay !== '') {
+                meetingDayNumber = parseInt(selectedDay, 10);
+            }
+
+            // Only filter if this is today's meeting
+            if (meetingDayNumber !== todayDayNumber) {
+                row.style.display = '';
+                return;
+            }
+
+            // Find the time cell (usually first column with time data)
+            var timeCell = row.querySelector('.bmlt-column0');
+            if (!timeCell) {
+                row.style.display = '';
+                return;
+            }
+
+            var timeText = timeCell.textContent || timeCell.innerText;
+            var meetingMinutes = parseTimeToMinutes(timeText);
+
+            if (meetingMinutes === null) {
+                row.style.display = '';
+                return;
+            }
+
+            // Hide if meeting time has passed
+            if (meetingMinutes < currentMinutes) {
+                row.style.display = 'none';
+            } else {
+                row.style.display = '';
+            }
+        });
+    }
+
+    upcomingToggle.addEventListener('click', function() {
+        upcomingFilterActive = !upcomingFilterActive;
+        this.classList.toggle('active', upcomingFilterActive);
+        filterUpcomingMeetings();
+    });
+
+    // Re-run filter when Crouton finishes rendering
+    var originalOnComplete = crouton.config.on_complete;
+    crouton.config.on_complete = function() {
+        if (originalOnComplete) originalOnComplete();
+        if (upcomingFilterActive) {
+            filterUpcomingMeetings();
+        }
+    };
 </script>
 </html>
